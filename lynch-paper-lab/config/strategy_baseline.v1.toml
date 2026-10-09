@@ -1,0 +1,93 @@
+# Lynch Paper Lab — baseline strategy, version 1.
+# UNVALIDATED / PAPER RESEARCH.
+#
+# Change control:
+#   - The SHA-256 of the canonical (parsed, key-sorted JSON) form of this file is
+#     stored in strategy_baseline.v1.sha256 and checked by tests and at runtime.
+#   - status = "PROPOSED" until the owner approves the items in [pending_decisions].
+#     The signal engine refuses to run unless status = "FROZEN".
+#   - After FROZEN, any rule change = new file (v2), new hash, owner sign-off,
+#     and a new row in the variant registry. Never edit v1 in place.
+
+[meta]
+name = "baseline_momentum_12_1"
+version = 1
+status = "PROPOSED"
+label = "UNVALIDATED / PAPER RESEARCH"
+mode = "paper_only"
+
+[universe]
+index = "S&P 500"
+membership = "point_in_time"          # constituents as of each decision date
+membership_source = "PENDING_M2"      # free sources are incomplete; see docs/M1_architecture.md §5
+min_history_sessions = 253            # 252 lookback + decision day
+exclude_if_missing_close_on_decision_day = true
+
+[signal]
+name = "mom_12_1"
+formula = "P[t-21] / P[t-252] - 1"    # t = decision session index; excludes most recent ~1 month
+lookback_sessions = 252
+skip_sessions = 21
+price_basis = "split_and_dividend_adjusted_as_of_t"   # adjustments known at t only
+ranking = "cross_sectional_descending"
+tie_break = "symbol_ascending"
+
+[portfolio]
+selection = "top_quintile"            # n_selected = ceil(N_eligible / 5)
+weighting = "equal"
+rebalance = "monthly"
+decision_session = "last_trading_session_of_month"
+max_weight_per_name = 0.05
+max_weight_per_sector = 0.25
+sector_scheme = "GICS_sector"
+sector_cap_overflow = "excess_to_cash_proxy"   # PROPOSED; see pending_decisions
+gross_exposure_max = 1.0
+leverage = false
+shorting = false
+
+[trend_filter]
+reference_symbol = "SPY"
+sma_sessions = 200
+price_basis = "split_adjusted_close_as_of_t"
+rule = "if close_t < sma_200_t then 100% cash_proxy else strategy portfolio"
+evaluated_on = "decision_sessions_only"
+cash_proxy_symbol = "BIL"             # PROPOSED; see pending_decisions
+
+[execution]
+decision_time = "close_of_t"
+fill_time = "open_of_t_plus_1"
+paper_order_type = "market"
+paper_time_in_force = "opg"           # Alpaca market-on-open; verify fractional support in M4
+cost_bps_round_trip = 10.0            # 5 bps per side on traded notional (spread + slippage)
+commission_usd = 0.0
+regulatory_fees = "model_sec_section31_and_finra_taf_on_sells"
+fractional_shares = "PENDING_M4"
+
+[benchmark]
+symbol = "SPY"
+basis = "total_return_dividends_reinvested"
+same_dates = true
+same_starting_capital = true
+
+[evaluation]
+starting_capital_usd = 100000.0
+walk_forward = "expanding_window_annual_steps"   # rules are frozen, so walk-forward = out-of-sample reporting by year, no refits
+holdout_start = "2023-10-01"                     # PROPOSED; untouched until owner unlocks
+holdout_end = "2026-09-30"
+bootstrap = "stationary_block_bootstrap"
+bootstrap_mean_block_months = 3
+bootstrap_resamples = 10000
+bootstrap_seed = 20261009
+
+[second_arm]
+enabled = false
+definition = "PENDING_OWNER"          # must be predeclared and hashed before any test touches it
+
+[pending_decisions]
+items = [
+  "sector_cap_overflow: excess_to_cash_proxy (proposed) vs redistribute to next-ranked names in other sectors",
+  "cash_proxy_symbol: BIL (proposed; history from 2007) vs SGOV (history from 2020)",
+  "holdout window: 2023-10-01..2026-09-30 (proposed)",
+  "membership_source: chosen in M2 after evaluating free sources",
+  "second_arm definition (quality filter) or leave disabled",
+]
